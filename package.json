@@ -1,0 +1,16 @@
+{
+  "name": "moneytracker",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Andrey Miskov <amiskov@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "css": "npx tailwind build src/main.css -o src/processed.css"
+  },
+  "devDependencies": {
+    "elm-debug-transformer": "^1.0.5"
+  },
+  "dependencies": {
+    "tailwindcss": "^1.4.6"
+  }
+}

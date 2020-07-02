@@ -1,3 +1,5 @@
+@tailwind base;
+@tailwind components;
 /*
   elm-hot creates an additional div wrapper around the app to make HMR possible.
   This could break styling in development mode if you are using Elm UI.
@@ -54,3 +56,13 @@ img {
 .grade_bad {
   background: palevioletred;
 }
+
+textarea {
+  width: 500px;
+  height: 200px;
+}
+
+.purchased-items {
+  margin: 40px 0;
+}
+@tailwind utilities;

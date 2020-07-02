@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <style>
+        body {
+            font: 14px/1.2 'iA Writer Quattro S', monospace;
+        }
+        table {
+            margin: 20px auto;
+            width: 600px;
+            border-collapse: collapse;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid #CCC;
+        }
+
+        table th {
+            font-weight: normal;
+        }
+        table th, table td {
+            padding: 5px;
+        }
+
+        .product-price {
+            text-align: right;
+            padding-left: 2em;
+        }
+        tfoot {
+            font-weight: bold;
+        }
+        thead th {
+            font-weight: bold;
+            background: #CCC;
+            text-align: left;
+        }
+        tbody th {
+            text-align: left;
+        }
+        .purchase {
+        }
+    </style>
+</head>
+<body>
+<label for="rawJson">JSON from FNS:</label>
+<textarea id="rawJson" cols="30" rows="10"></textarea>
+<button onclick="renderPurchases()">Render</button>
+
+<div id="app"></div>
+<script>
+    const receiptToPurchase = r =>  ({
+        shop: {
+            name: r.user,
+                address: r.retailPlaceAddress
+        },
+        totalSum: r.totalSum,
+            dateTime: new Date(r.dateTime),
+            products: r.items
+    });
+
+    const formatPrice = p => `${(p / 100).toFixed(2)}&thinsp;₽`;
+    const renderProduct = p => `<th class="product-name">${p.name}</th><td class="product-price">${formatPrice(p.sum)}</td>`;
+    const renderPurchase = p => `<div class="purchase"> <table>
+            <thead>
+                <th colspan="2">${p.shop.name}, ${p.dateTime.toDateString()}</th>
+            </thead>
+            <tbody>${p.products.map(p => `<tr>${renderProduct(p)}</tr>`).join('')}</tbody>
+            <tfoot><tr><td>Итого:</td><td class="product-price">${formatPrice(p.totalSum)}</td></tr></tfoot>
+        </table></div>`;
+
+    function renderPurchases() {
+        const j = JSON.parse(document.getElementById('rawJson').value)
+        console.log(j)
+        document.getElementById('app').innerHTML =
+            j.map(doc => renderPurchase(receiptToPurchase(doc.document.receipt))).join('')
+    }
+</script>
+</body>
+</html>
