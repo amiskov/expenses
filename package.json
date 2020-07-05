@@ -5,7 +5,8 @@
   "author": "Andrey Miskov <amiskov@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "css": "npx tailwind build src/main.css -o src/processed.css"
+    "css": "npx tailwind build src/main.css -o src/processed.css",
+    "watch-css": "ls src/main.css | entr yarn run css"
   },
   "devDependencies": {
     "elm-debug-transformer": "^1.0.5"

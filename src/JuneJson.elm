@@ -1,4 +1,4 @@
-module JunJson exposing (json)
+module JuneJson exposing (json)
 
 
 json =

@@ -3,12 +3,11 @@ module Main exposing (..)
 import Array exposing (Array)
 import Browser
 import Browser.Dom
-import Html exposing (Html, button, div, form, h1, hr, img, input, label, li, option, pre, select, table, td, text, textarea, th, tr, ul)
-import Html.Attributes as Attr exposing (attribute, autofocus, checked, class, id, name, placeholder, selected, src, step, type_, value)
+import Html exposing (Html, button, colgroup, div, form, h1, hr, img, input, label, li, option, pre, select, table, tbody, td, text, textarea, tfoot, th, thead, tr, ul)
+import Html.Attributes as Attr exposing (attribute, autofocus, checked, class, for, id, name, placeholder, selected, src, step, style, type_, value, width)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Json.Decode exposing (Decoder, array, decodeString, float, int, list, string, succeed)
 import Json.Decode.Pipeline exposing (hardcoded, optional, required)
-import JunJson
 import Task
 
 
@@ -21,15 +20,15 @@ type alias Receipt =
     }
 
 
+type alias Purchase =
+    { document : Document
+    }
+
+
 type alias Product =
     { name : String
     , price : Int
     , grade : Grade
-    }
-
-
-type alias Purchase =
-    { document : Document
     }
 
 
@@ -70,6 +69,17 @@ viewGradingInput p id purchaseIdx productIdx grade =
         inputName =
             "grade_" ++ id
 
+        bgClass =
+            case grade of
+                Neutral ->
+                    "bg-gray-300"
+
+                Bad ->
+                    "bg-red-300"
+
+                Good ->
+                    "bg-green-300"
+
         isChecked =
             case ( grade, p.grade ) of
                 ( Neutral, Neutral ) ->
@@ -87,17 +97,22 @@ viewGradingInput p id purchaseIdx productIdx grade =
         val =
             case grade of
                 Neutral ->
-                    "Normal"
+                    "нейтрально"
 
                 Bad ->
-                    "Bad"
+                    "вредно"
 
                 Good ->
-                    "Good"
+                    "полезно"
     in
-    label [ class <| "inline-block p-2" ]
-        [ input
+    label
+        [ class "inline-block p-2 rounded-md border text-white font-bold border-gray-500"
+        , class bgClass
+        ]
+        [ text "" --val
+        , input
             [ type_ "radio"
+            , class ""
             , name inputName
             , checked isChecked
             , value val
@@ -123,7 +138,7 @@ init : ( Model, Cmd Msg )
 init =
     ( { newPurchase = Array.fromList []
       , newProduct = Product "" 0 Neutral
-      , rawJson = JunJson.json
+      , rawJson = ""
       , purchases = Array.fromList []
       }
     , Task.succeed ParsePurchases
@@ -188,6 +203,10 @@ update msg model =
                             Array.map (\purchase -> autogradeItems purchase.document.receipt.items) p
 
                         Err er ->
+                            let
+                                _ =
+                                    Debug.log "Error" er
+                            in
                             Array.fromList []
 
                 newModel =
@@ -246,16 +265,26 @@ updateProductPrice ({ newProduct } as model) price =
 
 view : Model -> Html Msg
 view model =
-    div [ class "bg-red" ]
-        [ textarea
-            [ onInput UpdateRawJson
-            , class "border"
-            , Attr.value model.rawJson
+    div [ class "text-left" ]
+        [ label
+            [ class "block"
+            , for "rawJson"
             ]
-            []
-        , button [ class "bg-gray-500 p-2", onClick ParsePurchases ] [ text "Parse" ]
-        , hr [] []
-        , viewExpensesByGrade model
+            [ text "Выписка из «Проверки чеков» в JSON" ]
+        , div []
+            [ textarea
+                [ onInput UpdateRawJson
+                , id "rawJson"
+                , class "border rounded"
+                , Attr.value model.rawJson
+                ]
+                []
+            ]
+        , button
+            [ class "bg-gray-500 p-2 rounded text-white font-bold"
+            , onClick ParsePurchases
+            ]
+            [ text "Обработать" ]
         , viewPurchases model
 
         --, viewAddProductForm model
@@ -289,13 +318,25 @@ viewExpensesByGrade model =
 
         total =
             sumGood + sumBad + sumNeutral
+
+        viewRow key colorClass val =
+            tr [ class colorClass ]
+                [ th [ class "text-left pr-4" ] [ text key ]
+                , td [ class "text-right" ] [ text val ]
+                ]
     in
     div [ class "sticky top-0 right-0" ]
-        [ ul [ class "absolute rounded-md p-3 m-3 right-0 bg-gray-300 text-right" ]
-            [ li [] [ text <| "Good: " ++ viewPrice sumGood ]
-            , li [] [ text <| "Bad: " ++ viewPrice sumBad ]
-            , li [] [ text <| "Neutral: " ++ viewPrice sumNeutral ]
-            , li [] [ text <| "Total: " ++ viewPrice total ]
+        [ div [ class "absolute rounded p-3 mt-8 right-0 bg-gray-100 text-right" ]
+            [ table []
+                [ tbody []
+                    [ viewRow "Good" "text-green-700" (viewPrice sumGood)
+                    , viewRow "Bad" "text-red-700" (viewPrice sumBad)
+                    , viewRow "Neutral" "text-gray-700" (viewPrice sumNeutral)
+                    ]
+                , tfoot []
+                    [ viewRow "Totals" "border-t-2" (viewPrice total)
+                    ]
+                ]
             ]
         ]
 
@@ -309,7 +350,15 @@ viewPurchases model =
         purchasedItems =
             List.map2 (\purchase purchaseId -> ( purchaseId, purchase )) (Array.toList model.purchases) range
     in
-    div [] (List.map viewPurchase purchasedItems)
+    div [ class "my-8 border-t" ]
+        ([ if Array.isEmpty model.purchases then
+            text ""
+
+           else
+            viewExpensesByGrade model
+         ]
+            ++ List.map viewPurchase purchasedItems
+        )
 
 
 viewPurchase : ( Int, Array Product ) -> Html Msg
@@ -318,27 +367,46 @@ viewPurchase ( purchaseId, products ) =
         range =
             List.range 0 (Array.length products)
     in
-    table [ class "w-1/2 m-auto mb-8" ]
-        (List.map2 (viewPurchaseItem purchaseId) (Array.toList products) range)
+    div [ class "my-8" ]
+        [ table [ class "w-2/3" ]
+            ([ colgroup [ style "width" "80%" ] []
+             , colgroup [ style "width" "10%" ] []
+             , colgroup [ style "width" "10%" ] []
+             , thead
+                []
+                [ th [] [ text "Товар" ]
+                , th [] [ text "Цена" ]
+                , th [] [ text "Оценка" ]
+                ]
+             ]
+                ++ List.map2 (viewPurchaseItem purchaseId) (Array.toList products) range
+            )
+        ]
 
 
 viewPurchaseItem : Int -> Product -> Int -> Html Msg
 viewPurchaseItem purchaseIdx p productIdx =
     let
-        bg =
+        textColor =
             case p.grade of
                 Neutral ->
-                    "bg-gray-300"
+                    "text-gray-700"
 
                 Bad ->
-                    "bg-red-300"
+                    "text-red-700"
 
                 Good ->
-                    "bg-green-300"
+                    "text-green-700"
     in
-    tr [ class <| "border-b" ++ " " ++ bg ]
-        [ td [ class "text-left" ] [ text p.name ]
-        , td [ class "text-right whitespace-no-wrap" ] [ text (viewPrice p.price) ]
+    tr
+        [ class "border-b"
+        , class textColor
+        ]
+        [ td
+            [ class "text-left"
+            ]
+            [ text p.name ]
+        , td [ class "text-right whitespace-no-wrap pr-3" ] [ text (viewPrice p.price) ]
         , td []
             [ viewGrading p purchaseIdx productIdx
             ]
@@ -351,7 +419,7 @@ viewGrading p purchaseIdx productIdx =
         productId =
             String.fromInt purchaseIdx ++ "_" ++ String.fromInt productIdx
     in
-    div [ class "whitespace-no-wrap" ]
+    div [ class "whitespace-no-wrap flex justify-between gap-1" ]
         [ viewGradingInput p productId purchaseIdx productIdx Good
         , viewGradingInput p productId purchaseIdx productIdx Neutral
         , viewGradingInput p productId purchaseIdx productIdx Bad
@@ -419,7 +487,11 @@ viewProductList model =
             tr []
                 [ td [ class "product-name" ] [ text p.name ]
                 , td [ class "product-price" ] [ text (viewPrice p.price) ]
-                , td [ class "product-grade", class (gradeClass p.grade) ] [ text (gradeText p.grade) ]
+                , td
+                    [ class "product-grade"
+                    , class (gradeClass p.grade)
+                    ]
+                    [ text (gradeText p.grade) ]
                 ]
     in
     table [ class "product-table" ]
