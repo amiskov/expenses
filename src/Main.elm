@@ -11,6 +11,11 @@ import Json.Decode.Pipeline exposing (hardcoded, optional, required)
 import Task
 
 
+type alias Ticket =
+    { document : Document
+    }
+
+
 type alias Document =
     { receipt : Receipt }
 
@@ -21,7 +26,8 @@ type alias Receipt =
 
 
 type alias Purchase =
-    { document : Document
+    { ticket : Ticket
+    , createdAt : String
     }
 
 
@@ -49,6 +55,13 @@ productDecoder =
 purchaseDecoder : Decoder Purchase
 purchaseDecoder =
     succeed Purchase
+        |> required "ticket" ticketDecoder
+        |> required "createdAt" string
+
+
+ticketDecoder : Decoder Ticket
+ticketDecoder =
+    succeed Ticket
         |> required "document" documentDecoder
 
 
@@ -200,7 +213,7 @@ update msg model =
                                         (\prod -> autogradeProduct prod)
                                         items
                             in
-                            Array.map (\purchase -> autogradeItems purchase.document.receipt.items) p
+                            Array.map (\purchase -> autogradeItems purchase.ticket.document.receipt.items) p
 
                         Err er ->
                             let
