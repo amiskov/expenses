@@ -3,12 +3,16 @@ module Main exposing (..)
 import Array exposing (Array)
 import Browser
 import Browser.Dom
+import Calendar
+import DateTime
 import Html exposing (Html, button, colgroup, div, form, h1, hr, img, input, label, li, option, pre, select, table, tbody, td, text, textarea, tfoot, th, thead, tr, ul)
 import Html.Attributes as Attr exposing (attribute, autofocus, checked, class, for, id, name, placeholder, selected, src, step, style, type_, value, width)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
+import Iso8601
 import Json.Decode exposing (Decoder, array, decodeString, float, int, list, string, succeed)
 import Json.Decode.Pipeline exposing (hardcoded, optional, required)
 import Task
+import Time
 
 
 type alias Ticket =
@@ -25,7 +29,7 @@ type alias Receipt =
     }
 
 
-type alias Purchase =
+type alias PurchaseJson =
     { ticket : Ticket
     , createdAt : String
     }
@@ -52,9 +56,9 @@ productDecoder =
         |> hardcoded Neutral
 
 
-purchaseDecoder : Decoder Purchase
+purchaseDecoder : Decoder PurchaseJson
 purchaseDecoder =
-    succeed Purchase
+    succeed PurchaseJson
         |> required "ticket" ticketDecoder
         |> required "createdAt" string
 
@@ -135,6 +139,12 @@ viewGradingInput p id purchaseIdx productIdx grade =
         ]
 
 
+type alias Purchase =
+    { date : String
+    , products : Array Product
+    }
+
+
 
 ---- MODEL ----
 
@@ -143,7 +153,7 @@ type alias Model =
     { newPurchase : Array Product
     , newProduct : Product
     , rawJson : String
-    , purchases : Array (Array Product)
+    , purchases : Maybe (Array Purchase)
     }
 
 
@@ -152,10 +162,11 @@ init =
     ( { newPurchase = Array.fromList []
       , newProduct = Product "" 0 Neutral
       , rawJson = ""
-      , purchases = Array.fromList []
+      , purchases = Nothing
       }
-    , Task.succeed ParsePurchases
-        |> Task.perform identity
+    , Cmd.none
+      --, Task.succeed ParsePurchases
+      --    |> Task.perform identity
     )
 
 
@@ -205,22 +216,30 @@ update msg model =
             let
                 purchases =
                     case decodeString (array purchaseDecoder) model.rawJson of
-                        Ok p ->
+                        Ok parsedPurchases ->
                             let
                                 autogradeItems : Array Product -> Array Product
-                                autogradeItems items =
+                                autogradeItems products =
                                     Array.map
                                         (\prod -> autogradeProduct prod)
-                                        items
+                                        products
+
+                                parseJsonPurchase : PurchaseJson -> Purchase
+                                parseJsonPurchase parsedPurchase =
+                                    { date = parsedPurchase.createdAt
+                                    , products = autogradeItems parsedPurchase.ticket.document.receipt.items
+                                    }
                             in
-                            Array.map (\purchase -> autogradeItems purchase.ticket.document.receipt.items) p
+                            parsedPurchases
+                                |> Array.map parseJsonPurchase
+                                |> Just
 
                         Err er ->
                             let
                                 _ =
                                     Debug.log "Error" er
                             in
-                            Array.fromList []
+                            Nothing
 
                 newModel =
                     { model | purchases = purchases }
@@ -304,11 +323,15 @@ view model =
         ]
 
 
-viewExpensesByGrade model =
+viewExpensesByGrade : Array Purchase -> Html Msg
+viewExpensesByGrade purchases =
     let
+        onlyProducts =
+            Array.map (\p -> p.products) purchases
+
         expensesBy : Grade -> Array (Array Product)
         expensesBy grade =
-            Array.map (\p -> Array.filter (\prod -> prod.grade == grade) p) model.purchases
+            Array.map (\p -> Array.filter (\prod -> prod.grade == grade) p) onlyProducts
                 |> Array.filter (\a -> not (Array.isEmpty a))
 
         sumProducts : Array Product -> Int
@@ -356,32 +379,60 @@ viewExpensesByGrade model =
 
 viewPurchases : Model -> Html Msg
 viewPurchases model =
-    let
-        range =
-            List.range 0 (Array.length model.purchases)
+    case model.purchases of
+        Just purchases ->
+            let
+                range =
+                    List.range 0 (Array.length purchases)
 
-        purchasedItems =
-            List.map2 (\purchase purchaseId -> ( purchaseId, purchase )) (Array.toList model.purchases) range
-    in
-    div [ class "my-8 border-t" ]
-        ([ if Array.isEmpty model.purchases then
-            text ""
+                purchasedItems =
+                    List.map2 (\purchase purchaseId -> ( purchaseId, purchase )) (Array.toList purchases) range
+            in
+            div [ class "my-8 border-t" ]
+                ([ if Array.isEmpty purchases then
+                    text ""
 
-           else
-            viewExpensesByGrade model
-         ]
-            ++ List.map viewPurchase purchasedItems
-        )
+                   else
+                    viewExpensesByGrade purchases
+                 ]
+                    ++ List.map viewPurchase purchasedItems
+                )
+
+        Nothing ->
+            text "no purchases"
 
 
-viewPurchase : ( Int, Array Product ) -> Html Msg
-viewPurchase ( purchaseId, products ) =
+viewPurchase : ( Int, Purchase ) -> Html Msg
+viewPurchase ( purchaseId, { date, products } ) =
     let
         range =
             List.range 0 (Array.length products)
+
+        time =
+            case Iso8601.toTime date of
+                Ok t ->
+                    let
+                        dateTime =
+                            DateTime.fromPosix t
+
+                        year =
+                            dateTime |> DateTime.getYear |> String.fromInt
+
+                        month =
+                            dateTime |> DateTime.getMonth |> Calendar.monthToInt |> String.fromInt
+
+                        day =
+                            dateTime |> DateTime.getDay |> String.fromInt
+                    in
+                    --day ++ "." ++ month ++ "." ++ year
+                    Debug.toString date
+
+                Err er ->
+                    Debug.toString er
     in
     div [ class "my-8" ]
-        [ table [ class "w-2/3" ]
+        [ text time
+        , table [ class "w-2/3" ]
             ([ colgroup [ style "width" "80%" ] []
              , colgroup [ style "width" "10%" ] []
              , colgroup [ style "width" "10%" ] []
@@ -578,27 +629,33 @@ updateProductGrade : Model -> Grade -> Int -> Int -> Model
 updateProductGrade model newGrade purchaseIdx productIdx =
     let
         purchase =
-            Array.get purchaseIdx model.purchases
+            Array.get purchaseIdx (Maybe.withDefault Array.empty model.purchases)
     in
     case purchase of
         Just p ->
             let
                 product =
-                    Array.get productIdx p
+                    Array.get productIdx p.products
             in
             case product of
                 Just prod ->
                     let
+                        newProd : Product
                         newProd =
                             { prod | grade = newGrade }
 
-                        newItems =
-                            Array.set productIdx newProd p
+                        newProducts : Array Product
+                        newProducts =
+                            Array.set productIdx newProd p.products
+
+                        newPurchase : Purchase
+                        newPurchase =
+                            { p | products = newProducts }
 
                         newPurchases =
-                            Array.set purchaseIdx newItems model.purchases
+                            Array.set purchaseIdx newPurchase (Maybe.withDefault Array.empty model.purchases)
                     in
-                    { model | purchases = newPurchases }
+                    { model | purchases = Just newPurchases }
 
                 Nothing ->
                     model
