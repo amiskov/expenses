@@ -5,8 +5,8 @@ import Browser
 import Browser.Dom
 import Calendar
 import DateTime
-import Html exposing (Html, button, colgroup, div, form, h1, hr, img, input, label, li, option, pre, select, table, tbody, td, text, textarea, tfoot, th, thead, tr, ul)
-import Html.Attributes as Attr exposing (attribute, autofocus, checked, class, for, id, name, placeholder, selected, src, step, style, type_, value, width)
+import Html exposing (Html, button, colgroup, div, em, form, h1, h2, hr, img, input, label, li, option, p, pre, select, span, table, tbody, td, text, textarea, tfoot, th, thead, tr, ul)
+import Html.Attributes as Attr exposing (attribute, autofocus, checked, class, classList, for, id, name, placeholder, selected, src, step, style, type_, value, width)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit)
 import Iso8601
 import Json.Decode exposing (Decoder, array, decodeString, float, int, list, string, succeed)
@@ -154,6 +154,7 @@ type alias Model =
     , newProduct : Product
     , rawJson : String
     , purchases : Maybe (Array Purchase)
+    , isInstructionShowed : Bool
     }
 
 
@@ -163,10 +164,9 @@ init =
       , newProduct = Product "" 0 Neutral
       , rawJson = ""
       , purchases = Nothing
+      , isInstructionShowed = False
       }
-    , Cmd.none
-      --, Task.succeed ParsePurchases
-      --    |> Task.perform identity
+    , Task.attempt (\_ -> NoOp) (Browser.Dom.focus "rawJson")
     )
 
 
@@ -180,6 +180,7 @@ type Msg
     | UpdateProductName String
     | UpdateProductPrice String
     | ParsePurchases
+    | ToggleInstructionVisibility
     | UpdateRawJson String
     | GradeChecked Grade Int Int
 
@@ -189,7 +190,12 @@ update msg model =
     case msg of
         AddProduct ->
             ( updateProductList model
-            , Task.attempt (\_ -> NoOp) (Browser.Dom.focus "productName")
+            , Task.attempt (\_ -> NoOp) (Browser.Dom.focus "rawJson")
+            )
+
+        ToggleInstructionVisibility ->
+            ( { model | isInstructionShowed = not model.isInstructionShowed }
+            , Cmd.none
             )
 
         UpdateProductName n ->
@@ -291,31 +297,94 @@ updateProductPrice ({ newProduct } as model) price =
 ---- VIEW ----
 
 
+nbsp =
+    "\u{00A0}"
+
+
 view : Model -> Html Msg
 view model =
-    div [ class "text-left" ]
-        [ label
-            [ class "block"
-            , for "rawJson"
-            ]
-            [ text "Выписка из «Проверки чеков» в JSON" ]
-        , div []
-            [ textarea
-                [ onInput UpdateRawJson
-                , id "rawJson"
-                , class "border rounded"
-                , Attr.value model.rawJson
+    let
+        cls bg =
+            bg ++ " px-2 rounded pb-1"
+    in
+    div [ class "text-left container " ]
+        [ div [ class "px-2 py-4 mx-auto" ]
+            [ h2 [ class "text-lg md:text-2xl mb-3 font-bold" ]
+                [ text "Считалка"
+                , text " "
+                , span [ class (cls "bg-green-300") ] [ text "полезных" ]
+                , text ", "
+                , span [ class (cls "bg-gray-300") ] [ text "нейтральных" ]
+                , text (" и" ++ nbsp)
+                , span [ class (cls "bg-red-300") ] [ text "вредных" ]
+                , text " "
+                , text "расходов"
                 ]
-                []
+            , label
+                [ class "block"
+                , for "rawJson"
+                ]
+                [ text "Выписка из «Проверки чека» в JSON:" ]
+            , div []
+                [ textarea
+                    [ onInput UpdateRawJson
+                    , id "rawJson"
+                    , placeholder """[{"claims":[],"ticket":{"document":{"receipt":{"cashTotalSum" и т.д."""
+                    , class "w-full h-20 p-2 border rounded"
+                    , Attr.value model.rawJson
+                    ]
+                    []
+                ]
+            , button
+                [ class "bg-gray-500 p-2 rounded text-white font-bold"
+                , onClick ParsePurchases
+                ]
+                [ text "Обработать" ]
             ]
-        , button
-            [ class "bg-gray-500 p-2 rounded text-white font-bold"
-            , onClick ParsePurchases
-            ]
-            [ text "Обработать" ]
+        , viewInstruction model
         , viewPurchases model
 
         --, viewAddProductForm model
+        ]
+
+
+viewInstruction model =
+    div
+        [ classList
+            [ ( "border-t", True )
+            , ( "bg-gray-200", model.isInstructionShowed )
+            ]
+        ]
+        [ span
+            [ onClick ToggleInstructionVisibility
+            , class "cursor-pointer inline-block m-2 border-b border-black border-dashed"
+            ]
+            [ text
+                (if model.isInstructionShowed then
+                    "Скрыть"
+
+                 else
+                    "Показать"
+                )
+            , text " инструкцию"
+            ]
+        , if model.isInstructionShowed then
+            let
+                viewImg file =
+                    li [ class "mx-2" ]
+                        [ img [ src file ] []
+                        ]
+            in
+            ul
+                [ class "flex overflow-x-auto" ]
+                [ viewImg "1_scan.png"
+                , viewImg "2_collect.png"
+                , viewImg "3_export.png"
+                , viewImg "4_copy.png"
+                ]
+
+          else
+            text ""
         ]
 
 
@@ -357,13 +426,13 @@ viewExpensesByGrade purchases =
                 , td [ class "text-right" ] [ text val ]
                 ]
     in
-    div [ class "sticky top-0 right-0" ]
-        [ div [ class "absolute rounded p-3 mt-8 right-0 bg-gray-100 text-right" ]
-            [ table []
+    div [ class "sticky top-0 right-0 shadow-lg" ]
+        [ div [ class "rounded p-2 right-0 bg-gray-100 text-right" ]
+            [ table [ class "w-full md:w-auto" ]
                 [ tbody []
-                    [ viewRow "Good" "text-green-700" (viewPrice sumGood)
-                    , viewRow "Bad" "text-red-700" (viewPrice sumBad)
-                    , viewRow "Neutral" "text-gray-700" (viewPrice sumNeutral)
+                    [ viewRow "Полезно" "text-green-700" (viewPrice sumGood)
+                    , viewRow "Вредно" "text-red-700" (viewPrice sumBad)
+                    , viewRow "Нейтрально" "text-gray-700" (viewPrice sumNeutral)
                     ]
                 , tfoot []
                     [ viewRow "Totals" "border-t-2" (viewPrice total)
@@ -395,7 +464,7 @@ viewPurchases model =
                 )
 
         Nothing ->
-            text "no purchases"
+            div [] [ text "" ]
 
 
 viewPurchase : ( Int, Purchase ) -> Html Msg
@@ -425,9 +494,10 @@ viewPurchase ( purchaseId, { date, products } ) =
                 Err _ ->
                     ""
     in
-    div [ class "my-8" ]
-        [ text time
-        , table [ class "w-2/3" ]
+    div [ class "my-8 mx-2 px-2 bg-gray-100 border rounded" ]
+        [ div [ class "my-2" ]
+            [ span [ class "px-2 py-1 italic bg-gray-400 rounded" ] [ text time ] ]
+        , table [ class "w-full" ]
             ([ colgroup [ style "width" "80%" ] []
              , colgroup [ style "width" "10%" ] []
              , colgroup [ style "width" "10%" ] []
@@ -458,15 +528,16 @@ viewPurchaseItem purchaseIdx p productIdx =
                     "text-green-700"
     in
     tr
-        [ class "border-b"
+        [ class "border-b hover:bg-gray-200"
         , class textColor
         ]
         [ td
-            [ class "text-left"
+            [ class "text-left py-2 align-top"
+            , style "overflow-wrap" "break-word"
             ]
             [ text p.name ]
-        , td [ class "text-right whitespace-no-wrap pr-3" ] [ text (viewPrice p.price) ]
-        , td []
+        , td [ class "text-right py-2 align-top whitespace-no-wrap pr-3" ] [ text (viewPrice p.price) ]
+        , td [ class "align-top py-2" ]
             [ viewGrading p purchaseIdx productIdx
             ]
         ]
@@ -478,7 +549,7 @@ viewGrading p purchaseIdx productIdx =
         productId =
             String.fromInt purchaseIdx ++ "_" ++ String.fromInt productIdx
     in
-    div [ class "whitespace-no-wrap flex justify-between gap-1" ]
+    div [ class "text-center md:whitespace-no-wrap justify-between gap-1" ]
         [ viewGradingInput p productId purchaseIdx productIdx Good
         , viewGradingInput p productId purchaseIdx productIdx Neutral
         , viewGradingInput p productId purchaseIdx productIdx Bad
