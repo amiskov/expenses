@@ -234,11 +234,7 @@ update msg model =
                                 |> Array.map parseJsonPurchase
                                 |> Just
 
-                        Err er ->
-                            let
-                                _ =
-                                    Debug.log "Error" er
-                            in
+                        Err _ ->
                             Nothing
 
                 newModel =
@@ -424,11 +420,10 @@ viewPurchase ( purchaseId, { date, products } ) =
                         day =
                             dateTime |> DateTime.getDay |> String.fromInt
                     in
-                    --day ++ "." ++ month ++ "." ++ year
-                    Debug.toString date
+                    day ++ "." ++ month ++ "." ++ year
 
-                Err er ->
-                    Debug.toString er
+                Err _ ->
+                    ""
     in
     div [ class "my-8" ]
         [ text time
