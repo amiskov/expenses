@@ -26,7 +26,21 @@ type alias Document =
 
 type alias Receipt =
     { items : Array Product
+    , operationType : Int
     }
+
+
+{-| Признак расчета (operationType):
+1 Приход (для продавца, для меня — трата)
+2 Возврат прихода (для продавца, для меня — возврат денег)
+3 Расход
+4 Возврат расхода
+Here used simplified version: only counts what's spent and what's got back.
+TODO: Use this type instead of Int in Purchase
+-}
+type Operation
+    = Expense
+    | Return
 
 
 type alias PurchaseJson =
@@ -79,6 +93,7 @@ receiptDecoder : Decoder Receipt
 receiptDecoder =
     succeed Receipt
         |> required "items" (array productDecoder)
+        |> required "operationType" int
 
 
 viewGradingInput p id purchaseIdx productIdx grade =
@@ -142,6 +157,7 @@ viewGradingInput p id purchaseIdx productIdx grade =
 type alias Purchase =
     { date : String
     , products : Array Product
+    , operationType : Int
     }
 
 
@@ -234,6 +250,7 @@ update msg model =
                                 parseJsonPurchase parsedPurchase =
                                     { date = parsedPurchase.createdAt
                                     , products = autogradeItems parsedPurchase.ticket.document.receipt.items
+                                    , operationType = parsedPurchase.ticket.document.receipt.operationType
                                     }
                             in
                             parsedPurchases
@@ -399,9 +416,12 @@ viewExpensesByGrade purchases =
             Array.map (\p -> Array.filter (\prod -> prod.grade == grade) p) onlyProducts
                 |> Array.filter (\a -> not (Array.isEmpty a))
 
+        summator e s =
+            e.price + s
+
         sumProducts : Array Product -> Int
         sumProducts expenses =
-            Array.foldl (\e s -> e.price + s) 0 expenses
+            Array.foldl summator 0 expenses
 
         sumPurchaseBy : Grade -> Int
         sumPurchaseBy grade =
@@ -468,7 +488,7 @@ viewPurchases model =
 
 
 viewPurchase : ( Int, Purchase ) -> Html Msg
-viewPurchase ( purchaseId, { date, products } ) =
+viewPurchase ( purchaseId, { date, products, operationType } ) =
     let
         range =
             List.range 0 (Array.length products)
@@ -493,8 +513,14 @@ viewPurchase ( purchaseId, { date, products } ) =
 
                 Err _ ->
                     ""
+
+        isReturn =
+            operationType == 2
     in
-    div [ class "my-8 mx-2 px-2 bg-gray-100 border rounded" ]
+    div
+        [ class "my-8 mx-2 px-2 bg-gray-100 border rounded"
+        , classList [ ( "bg-green-200", isReturn ) ]
+        ]
         [ div [ class "my-2" ]
             [ span [ class "px-2 py-1 italic bg-gray-400 rounded" ] [ text time ] ]
         , table [ class "w-full" ]
@@ -505,16 +531,22 @@ viewPurchase ( purchaseId, { date, products } ) =
                 []
                 [ th [] [ text "Товар" ]
                 , th [] [ text "Цена" ]
-                , th [] [ text "Оценка" ]
+                , th []
+                    [ if not isReturn then
+                        text "Оценка"
+
+                      else
+                        text ""
+                    ]
                 ]
              ]
-                ++ List.map2 (viewPurchaseItem purchaseId) (Array.toList products) range
+                ++ List.map2 (viewPurchaseItem isReturn purchaseId) (Array.toList products) range
             )
         ]
 
 
-viewPurchaseItem : Int -> Product -> Int -> Html Msg
-viewPurchaseItem purchaseIdx p productIdx =
+viewPurchaseItem : Bool -> Int -> Product -> Int -> Html Msg
+viewPurchaseItem isReturn purchaseIdx p productIdx =
     let
         textColor =
             case p.grade of
@@ -538,7 +570,11 @@ viewPurchaseItem purchaseIdx p productIdx =
             [ text p.name ]
         , td [ class "text-right py-2 align-top whitespace-no-wrap pr-3" ] [ text (viewPrice p.price) ]
         , td [ class "align-top py-2" ]
-            [ viewGrading p purchaseIdx productIdx
+            [ if not isReturn then
+                viewGrading p purchaseIdx productIdx
+
+              else
+                text "Возврат"
             ]
         ]
 
@@ -656,7 +692,17 @@ badWords =
 
 
 goodWords =
+    -- TODO: Use regexes for matching words
     [ "авокадо"
+    , "кижуч"
+    , "форель"
+    , "горбуша"
+    , "яблоко"
+    , "яблоки"
+    , "груша"
+    , "груши"
+    , "минтай"
+    , "тилапия"
     ]
 
 
@@ -670,15 +716,25 @@ autogradeByName name =
     if findTriggerWordsInName name badWords then
         Bad
 
-    else if List.member name goodWords then
+    else if findTriggerWordsInName name goodWords then
+        let
+            _ =
+                Debug.log "name" name
+        in
         Good
 
     else
         Neutral
 
 
+findTriggerWordsInName : String -> List String -> Bool
 findTriggerWordsInName productName triggerWords =
     let
+        -- TODO: Try to find each of trigger words in the productName with `String.contains`
+        -- String.contains "пиво" "Пиво ШПАТЕН МЮНХ.св.ж/б 0.5л"
+        -- String.contains "пивн" "Пиво ШПАТЕН МЮНХ.св.ж/б 0.5л"
+        --- etc
+        -- Потому что может быть так: "КУР.БЕР.Горбуша натур.250г" (слова не разделены пробелами, только точки)
         nameWords =
             productName
                 |> String.toLower
